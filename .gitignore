@@ -6,4 +6,4 @@
 modules.order
 .tmp_versions/
 .*.cmd
-imu_wake
+imu_read

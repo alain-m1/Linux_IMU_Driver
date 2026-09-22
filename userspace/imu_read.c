@@ -45,6 +45,8 @@ int main() {
 
     printf("MPU-6050 woken up successfully.\n");
 
+    usleep(100000);
+
     unsigned char start_reg = 0x3B;
     unsigned char data[14];
 
