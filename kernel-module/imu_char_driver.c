@@ -2,11 +2,59 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/i2c.h>
+#include <linux/types.h>
 
 #define DEVICE_NAME "mympu6050"
 
+#define MPU6050_PWR_MGMT_1   0x6B
+#define MPU6050_ACCEL_XOUT_H 0x3B
+#define MPU6050_ACCEL_YOUT_H 0x3D
+#define MPU6050_ACCEL_ZOUT_H 0x3F
+#define MPU6050_GYRO_XOUT_H  0x43
+#define MPU6050_GYRO_YOUT_H  0x45
+#define MPU6050_GYRO_ZOUT_H  0x47
+
+static s16 accel_x, accel_y, accel_z;
+static s16 gyro_x, gyro_y, gyro_z;
+
 static int mympu6050_probe(struct i2c_client *client) {
+    int ret;
+    s32 high, low;
+
     printk(KERN_INFO "mympu6050: probe() called - device found!\n");
+
+    ret = i2c_smbus_write_byte_data(client, MPU6050_PWR_MGMT_1, 0x00);
+    if (ret < 0) {
+        printk(KERN_ERR "mympu6050: failed to wake device (%d)\n", ret);
+        return ret;
+    }
+
+    high = i2c_smbus_read_byte_data(client, MPU6050_ACCEL_XOUT_H);
+    low  = i2c_smbus_read_byte_data(client, MPU6050_ACCEL_XOUT_H + 1);
+    accel_x = (s16)((high << 8) | low);
+
+    high = i2c_smbus_read_byte_data(client, MPU6050_ACCEL_YOUT_H);
+    low  = i2c_smbus_read_byte_data(client, MPU6050_ACCEL_YOUT_H + 1);
+    accel_y = (s16)((high << 8) | low);
+
+    high = i2c_smbus_read_byte_data(client, MPU6050_ACCEL_ZOUT_H);
+    low  = i2c_smbus_read_byte_data(client, MPU6050_ACCEL_ZOUT_H + 1);
+    accel_z = (s16)((high << 8) | low);
+
+    high = i2c_smbus_read_byte_data(client, MPU6050_GYRO_XOUT_H);
+    low  = i2c_smbus_read_byte_data(client, MPU6050_GYRO_XOUT_H + 1);
+    gyro_x = (s16)((high << 8) | low);
+
+    high = i2c_smbus_read_byte_data(client, MPU6050_GYRO_YOUT_H);
+    low  = i2c_smbus_read_byte_data(client, MPU6050_GYRO_YOUT_H + 1);
+    gyro_y = (s16)((high << 8) | low);
+
+    high = i2c_smbus_read_byte_data(client, MPU6050_GYRO_ZOUT_H);
+    low  = i2c_smbus_read_byte_data(client, MPU6050_GYRO_ZOUT_H + 1);
+    gyro_z = (s16)((high << 8) | low);
+
+    printk(KERN_INFO "mympu6050: accel(x=%d y=%d z=%d) gyro(x=%d y=%d z=%d)\n",
+           accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z);
     return 0;
 }
 
