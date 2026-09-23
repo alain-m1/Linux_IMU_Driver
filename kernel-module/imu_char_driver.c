@@ -3,6 +3,10 @@
 #include <linux/init.h>
 #include <linux/i2c.h>
 #include <linux/types.h>
+#include <linux/fs.h>
+#include <linux/cdev.h>
+#include <linux/device.h>
+#include <linux/uaccess.h>
 
 #define DEVICE_NAME "mympu6050"
 
@@ -16,6 +20,47 @@
 
 static s16 accel_x, accel_y, accel_z;
 static s16 gyro_x, gyro_y, gyro_z;
+
+static dev_t          imu_dev_num;
+static struct cdev    imu_cdev;
+static struct class  *imu_class;
+static struct device *imu_device;
+
+static int imu_open(struct inode *inode, struct file *file) {
+    return 0;
+}
+
+static int imu_release(struct inode *inode, struct file *file) {
+    return 0;
+}
+
+static ssize_t imu_read(struct file *file, char __user *buf, size_t count, loff_t *offset) {
+    char msg[128];
+    int len;
+
+    if (*offset > 0)
+        return 0;
+
+    len = snprintf(msg, sizeof(msg),
+                   "accel: x=%d y=%d z=%d\ngyro: x=%d y=%d z=%d\n",
+                   accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z);
+
+    if (len > count)
+        len = count;
+
+    if (copy_to_user(buf, msg, len))
+        return -EFAULT;
+
+    *offset += len;
+    return len;
+}
+
+static const struct file_operations imu_fops = {
+    .owner   = THIS_MODULE,
+    .open    = imu_open,
+    .read    = imu_read,
+    .release = imu_release,
+};
 
 static int mympu6050_probe(struct i2c_client *client) {
     int ret;
@@ -55,10 +100,50 @@ static int mympu6050_probe(struct i2c_client *client) {
 
     printk(KERN_INFO "mympu6050: accel(x=%d y=%d z=%d) gyro(x=%d y=%d z=%d)\n",
            accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z);
+
+    ret = alloc_chrdev_region(&imu_dev_num, 0, 1, DEVICE_NAME);
+    if (ret < 0) {
+        printk(KERN_ERR "mympu6050: failed to allocate chrdev region (%d)\n", ret);
+        return ret;
+    }
+
+    cdev_init(&imu_cdev, &imu_fops);
+    imu_cdev.owner = THIS_MODULE;
+
+    ret = cdev_add(&imu_cdev, imu_dev_num, 1);
+    if (ret < 0) {
+        printk(KERN_ERR "mympu6050: failed to add cdev (%d)\n", ret);
+        unregister_chrdev_region(imu_dev_num, 1);
+        return ret;
+    }
+
+    imu_class = class_create(DEVICE_NAME);
+    if (IS_ERR(imu_class)) {
+        printk(KERN_ERR "mympu6050: failed to create class\n");
+        cdev_del(&imu_cdev);
+        unregister_chrdev_region(imu_dev_num, 1);
+        return PTR_ERR(imu_class);
+    }
+
+    imu_device = device_create(imu_class, NULL, imu_dev_num, NULL, "imu0");
+    if (IS_ERR(imu_device)) {
+        printk(KERN_ERR "mympu6050: failed to create device\n");
+        class_destroy(imu_class);
+        cdev_del(&imu_cdev);
+        unregister_chrdev_region(imu_dev_num, 1);
+        return PTR_ERR(imu_device);
+    }
+
+    printk(KERN_INFO "mympu6050: /dev/imu0 created\n");
+
     return 0;
 }
 
 static void mympu6050_remove(struct i2c_client *client) {
+    device_destroy(imu_class, imu_dev_num);
+    class_destroy(imu_class);
+    cdev_del(&imu_cdev);
+    unregister_chrdev_region(imu_dev_num, 1);
     printk(KERN_INFO "mympu6050: remove() called - device removed.\n");
 }
 
